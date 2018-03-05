@@ -1,0 +1,20 @@
+input {
+    jdbc {
+        jdbc_connection_string => "jdbc:mysql://mysql/owish"
+        jdbc_user => "owish"
+        jdbc_password => "owish"
+        jdbc_driver_library => "/usr/share/logstash/bin/mysql-connector-java-5.1.45.jar"
+        jdbc_driver_class => "com.mysql.jdbc.Driver"
+        statement => "SELECT * from wish"
+        schedule => "*/10 * * * * *"
+    }
+} 
+
+output {
+    elasticsearch {
+        hosts => ["http://elasticsearch:9200"]
+        index => "owish"
+        document_type => "wish"
+        document_id => "%{id}"
+    } 
+}

@@ -1,0 +1,109 @@
+version: '3'
+
+services:
+  mysql:
+    image: mysql
+    container_name: mysql    
+    #  expose for mvn build tests
+    ports:
+      - 3306:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=owish
+      - MYSQL_PASSWORD=owish
+      - MYSQL_DATABASE=owish
+    networks:
+      - owish-network
+    volumes:
+      - mysql-v:/var/lib/mysql
+
+
+#   you need to execute 'sudo sysctl -w vm.max_map_count=262144' in the host machine
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.2.2
+    container_name: elasticsearch
+    environment:
+      - transport.host=0.0.0.0
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9200:9200
+      - 9300:9300
+    networks:
+      - owish-network
+    volumes:
+      - elasticsearch-v:/usr/share/elasticsearch/data
+
+  logstash:
+    build:
+      context: .
+      dockerfile: logstash.dockerfile
+    container_name: logstash
+    depends_on: 
+      - mysql
+      - elasticsearch
+    ports: 
+     - 5044:5044
+    networks: 
+      - owish-network
+
+  owish_back:
+    build:
+      context: .
+      dockerfile: owish-back.dockerfile
+    container_name: owish_back
+    ports:
+      - 8080:8080
+    networks:
+      - owish-network
+    volumes:
+      - "./owish-0.0.1-SNAPSHOT.jar:/usr/src/olbati/owish-0.0.1-SNAPSHOT.jar"
+    depends_on: 
+      - mysql
+      - elasticsearch
+      - logstash
+    command: ./wait-for-it.sh -t 120 elasticsearch:9300 -- ./wait-for-it.sh -t 120 mysql:3306 -- java -jar owish-0.0.1-SNAPSHOT.jar
+
+  owish_pw:
+    build:
+      context: ../owish-pw
+    container_name: owish_pw
+    ports:
+      - 8081:80
+    networks:
+      - owish-network
+    depends_on: 
+      - mysql
+      - elasticsearch
+      - logstash
+      - owish_back
+    command: ./wait-for-it.sh -t 250 owish_back:8080 -- nginx -g 'daemon off;'
+
+  owish_ac:
+    build:
+      context: ../owish-ac
+    container_name: owish_ac
+    ports:
+      - 8082:80
+    networks:
+      - owish-network
+    depends_on: 
+      - mysql
+      - elasticsearch
+      - logstash
+      - owish_back
+    command: ./wait-for-it.sh -t 250 owish_back:8080 -- nginx -g 'daemon off;'
+
+networks:
+    owish-network:
+      driver: bridge
+
+volumes:
+  mysql-v: {}
+  elasticsearch-v: {}
+  
